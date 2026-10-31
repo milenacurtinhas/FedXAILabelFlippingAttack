@@ -121,6 +121,65 @@ class TrainerEHMS(FedClient):
         self.criterion = None
         self.optimizer = None
 
+        # Implementar etodo configure do fedclient
+        # chamar .super e obter o parametro que indica se o cliente e malicioso
+
+        # Ataque de label flipping (configurado via client_args em configure())
+        self.attack_rate: float = 0.0
+        self.attack_seed: int = 42
+        self.flip_idx:np.ndarray | None = None   # índices (do treino) com rótulo invertido
+        self.poisoned_train_loader: DataLoader | None = None
+
+    # -------------------------
+    # 0) Configuração do cliente (lê client_args)
+    # -------------------------
+    def configure(self, client_id, broker_id, client_folder, client_args):
+        # super().configure() conecta ao broker e já chama prepare_data(),
+        # então X_train/y_train estão disponíveis depois desta linha
+        super().configure(client_id, broker_id, client_folder, client_args)
+
+        args = client_args or {}
+        self.attack_rate = float(args.get("attack_rate", 0.0))
+        self.attack_seed = int(args.get("attack_seed", 42))
+
+        if not 0.0 <= self.attack_rate <= 1.0:
+            raise ValueError(f"[CLIENT {client_id}] attack_rate inválido: {self.attack_rate}")
+        
+        if self.attack_rate > 0.0:
+            # Sorteia UMA vez quais amostras terão o rótulo invertido; o mesmo subconjunto é usado
+            # em todas as épocas e rounds. Com a mesma semente, a permutação é a mesma para 30/60/100%,
+            # então o subconjunto de 30% está contido no de 60%.
+            n = len(self.y_train)
+            n_flip = int(round(self.attack_rate * n))
+            rng = np.random.default_rng(self.attack_seed)
+            self.flip_idx = np.sort(rng.permutation(n)[:n_flip])
+            print(f"[CLIENT {client_id}] MALICIOSO: label flipping em {n_flip}/{n} amostras ({self.attack_rate:.0%}), seed={self.attack_seed}")
+        else:
+            print(f"[CLIENT {client_id}] Benigno (sem ataque).")
+
+    def _get_poisoned_train_loader(self) -> DataLoader:
+        """Monta (uma única vez) o DataLoader de treino com os rótulos invertidos"""
+        if self.poisoned_train_loader is None:
+            y_poisoned = self.y_train.copy()
+            y_poisoned[self.flip_idx] = 1 - y_poisoned[self.flip_idx]
+
+            n_changed = int((y_poisoned != self.y_train).sum())
+            print(f"[CLIENT {self.get_client_id()}] Rótulos invertidos: {n_changed} | classe 1 antes={int((self.y_train == 1).sum())} depois={int((y_poisoned == 1).sum())}")
+
+            poisoned_ds = TabularDataset(self.X_train, y_poisoned)
+            self.poisoned_train_loader = DataLoader(poisoned_ds, batch_size=BATCH_SIZE, shuffle=True)
+
+            # O cliente malicioso segue o pipeline ormal sobre os dados envenenados:
+            # pos_weight recalculado com os rótulos que ele de fato usa no treino.
+            n_pos = int((y_poisoned == 1).sum())
+            n_neg = int((y_poisoned == 0).sum())
+            pos_weight_value = n_neg / max(n_pos, 1)
+            pos_weight = torch.tensor([pos_weight_value], dtype=torch.float32).to(self.device)
+            self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+            print(f"[CLIENT {self.get_client_id()}] pos_weight (dados envenenados): {pos_weight_value:.4f}")
+
+        return self.poisoned_train_loader
+
     # -------------------------
     # 1) Preparar dados locais
     # -------------------------
@@ -215,10 +274,17 @@ class TrainerEHMS(FedClient):
             return False
 
         try:
+            # Se malicioso, flip de labels: treina sobre o subconjunto com rótulos invertidos.
+            # Os dados de teste (evaluate) não são alterados.
+            if self.attack_rate > 0.0:
+                train_loader = self._get_poisoned_train_loader()
+            else:
+                train_loader = self.train_loader
+
             self.model.train()
             for epoch in range(1, N_EPOCHS + 1):
                 running_loss = 0.0
-                for X_batch, y_batch in self.train_loader:
+                for X_batch, y_batch in train_loader:
                     X_batch = X_batch.to(self.device)
                     y_batch = y_batch.to(self.device)
 
@@ -230,7 +296,7 @@ class TrainerEHMS(FedClient):
 
                     running_loss += loss.item() * X_batch.size(0)
 
-                avg_loss = running_loss / len(self.train_loader.dataset)
+                avg_loss = running_loss / len(train_loader.dataset)
                 print(f"[CLIENT {self.get_client_id()}] Epoch {epoch}/{N_EPOCHS} - loss={avg_loss:.4f}")
 
             return True

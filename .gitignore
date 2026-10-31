@@ -1,0 +1,67 @@
+# ==========================================================
+# Python
+# ==========================================================
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# ==========================================================
+# Editores / sistema
+# ==========================================================
+.vscode/
+.idea/
+.DS_Store
+
+# ==========================================================
+# Dados gerados (passo 2) — recriados por run_cv_folds_pipeline.py
+# (o dataset original em dataset/ continua versionado)
+# ==========================================================
+/cv/
+/mounted_clients/
+/dataset_fed/
+/fed/clients/
+
+# ==========================================================
+# Resultados de treino (passo 3)
+# ==========================================================
+/training_results/
+/results_lf*/
+
+# ==========================================================
+# SHAP, comparações e médias globais (passos 4 a 6)
+# ==========================================================
+/shap_values/
+/shap_lf*/
+/comparisons/
+/comparisons_lf*/
+/global_means/
+/global_means_lf*/
+
+# ==========================================================
+# Figuras (passo 7)
+# ==========================================================
+/fig_*/
+
+# ==========================================================
+# Saídas do servidor MininetFed (fed/server/)
+# ==========================================================
+/fed/server/*.npz
+/fed/server/metrics_summary*.txt
+/fed/server/learning_curve.csv
+/fed/server/*.log
+/fed/server/err.txt
+/fed/server/.done
+
+# ==========================================================
+# Broker MQTT do MininetFed (recriado a cada execução em broker_output/)
+# ==========================================================
+/broker_output/
+
+# ==========================================================
+# Saídas genéricas do MininetFed (logs, marcadores de fim)
+# ==========================================================
+err.txt
+.done
+*.log

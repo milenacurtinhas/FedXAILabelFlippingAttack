@@ -146,6 +146,10 @@ def main():
     ap.add_argument("--timeout-central", type=int, default=0, help="Timeout central em segundos (0 = sem timeout).")
     ap.add_argument("--timeout-fed", type=int, default=0, help="Timeout federado em segundos (0 = sem timeout).")
 
+    ap.add_argument("--attack-rate", type=float, default=0.0, help="Label flipping no cliente malicioso: 0.0, 0.3, 0.6 ou 1.0.")
+    ap.add_argument("--malicious-client", type=int, default=0)
+    ap.add_argument("--attack-seed", type=int, default=42)
+
     ap.add_argument("--skip-central", action="store_true")
     ap.add_argument("--skip-iid", action="store_true")
     ap.add_argument("--skip-noniid", action="store_true")
@@ -253,6 +257,9 @@ def main():
                 "--out-dir", str(out_dir),
                 "--n-clients", str(n_clients),
                 "--variant-tag", str(mode),
+                "--attack-rate", str(args.attack_rate),
+                "--malicious-client", str(args.malicious_client),
+                "--attack-seed", str(args.attack_seed),
             ]
 
             run_cmd(cmd_fed, timeout=timeout_f)

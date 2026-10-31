@@ -46,7 +46,15 @@ def main():
     ap.add_argument("--out-dir", required=True, help="Pasta para copiar best.model.npz e metrics_summary.txt")
     ap.add_argument("--n-clients", type=int, default=4)
     ap.add_argument("--variant-tag", default="fed", help="Somente tag para log (iid/noniid)")
+    ap.add_argument("--attack-rate", type=float, default=0.0, help="Fração dos dados de treino do cliente malicioso com rótulo invertido (0.0, 0.3, 0.6, 1.0). 0.0 = sem ataque")
+    ap.add_argument("--malicious-client", type=int, default=0, help="Índice do ciente malicioso (o mesmo em todos os cenários)")
+    ap.add_argument("--attack-seed", type=int, default=42, help="Semente para escolher quais amostras têm o rótulo invertido")
     args = ap.parse_args()
+
+    if not 0.0 <= args.attack_rate <= 1.0:
+        raise ValueError(f"--attack-rate deve estar em [0, 1]; recebido {args.attack_rate}")
+    if not 0 <= args.malicious_client < args.n_clients:
+        raise ValueError(f"--malicious-client deve estar em [0, {args.n_clients - 1}]")
 
     clients_dir = Path(args.clients_dir).resolve()
     out_dir = Path(args.out_dir).resolve()
@@ -66,6 +74,8 @@ def main():
         ServerOptions.CLIENT_SELECTOR  : ClientSelectorType.ALL_CLIENTS,
         ServerOptions.MODEL_AGGREGATOR : AggregatorType.FED_AVG
     }
+
+    # client_args = { }
 
     def topology():
         cleanup_fed_server_outputs()
@@ -95,6 +105,13 @@ def main():
                 if not cpath.exists():
                     raise FileNotFoundError(f"Cliente não encontrado: {cpath}")
 
+                # client_args é serializado em JSON pelo MininetFed -> chaves string e valores simples
+                client_args = {
+                    "attack_rate": args.attack_rate if i == args.malicious_client else 0.0,
+                    "attack_seed": args.attack_seed,
+                }
+                print(f"[ATTACK] client{i}: {client_args}")
+
                 # IMPORTANTE:
                 # client_folder aponta para a pasta onde estão data_train.csv/data_test.csv + trainer code
                 net.addHost(
@@ -102,11 +119,13 @@ def main():
                     cls=FedClientNode,
                     script="ehms_trainer.py",
                     dimage=client_dimage,
-                    client_folder=str(cpath)
+                    client_folder=str(cpath),
+                    # passar client_args
+                    client_args=client_args
                 )
                 net.addLink(s1, net.get(f"client{i}"))
 
-            print(f'*** Starting network (variant={args.variant_tag})...\n')
+            print(f'*** Starting network (variant={args.variant_tag}, attack_rate={args.attack_rate}, malicious_client={args.malicious_client})...\n')
             net.build()
             net.addNAT(name='nat0', linkTo='s1', ip='192.168.210.254').configDefault()
             s1.start([])

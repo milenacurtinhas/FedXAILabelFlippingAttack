@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 from mininetfed.core.dto.client_state import ClientState
@@ -9,6 +10,16 @@ from numpy import ndarray
 
 
 class EHMSServer(FedServer):
+    def configure(self, server_id, broker_addr, server_folder, server_args):
+        # O broker pode ainda não estar aceitando conexões quando o servidor sobe.
+        # Tenta de novo por até ~60 s em vez de morrer com ConnectionRefusedError.
+        for attempt in range(1, 31):
+            try:
+                return super().configure(server_id, broker_addr, server_folder, server_args)
+            except OSError as e:
+                print(f"[SERVER] broker indisponível ({e}); tentativa {attempt}/30, nova tentativa em 2 s")
+                time.sleep(2)
+        raise RuntimeError("[SERVER] não consegui conectar ao broker")
 
     def aggregate_model(self, training_responses : list[TrainingData], clients_state : dict[str, ClientState]) -> list[ndarray]:
         agg_model = super().aggregate_model(training_responses, clients_state)
