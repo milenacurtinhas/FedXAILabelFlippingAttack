@@ -63,7 +63,7 @@ def main():
     if not clients_dir.exists():
         raise FileNotFoundError(f"clients-dir não existe: {clients_dir}")
 
-    # server_args (mesmo que você tinha)
+    # server_args
     server_args = {
         ServerOptions.MIN_CLIENTS      : args.n_clients,
         ServerOptions.NUM_ROUNDS       : 100,
