@@ -4,8 +4,13 @@
 """
 plot_ecdf_cosine_distance.py
 
-Gera gráficos ECDF da distância do cosseno (cosine_distance) para 4 cenários.
-Para cada cenário, plota uma curva por fold.
+Gera gráficos ECDF da distância do cosseno (cosine_distance) entre cenários de
+ataque por label flipping, no contexto MF_DL:
+
+  MF_DL (Uni):    0% vs 30%, 0% vs 60%, 0% vs 100%   -> 3 gráficos
+  MF_DL (NonUni): 0% vs 30%, 0% vs 60%, 0% vs 100%   -> 3 gráficos
+
+Para cada gráfico, plota uma curva por fold.
 
 REQUISITOS (conforme pedido):
 - Padrão compatível com template SBC (fonte serif, tamanho pequeno, figura compacta)
@@ -18,25 +23,20 @@ REQUISITOS (conforme pedido):
 - fold i -> legenda "Fold i+1"
 - Saída: PDF + PNG (300 dpi)
 
-Entrada esperada: pasta raiz das comparações (out_root do driver), no formato:
+Entrada esperada: pasta raiz gerada por run_compare_attack_scenarios.py:
   compare_root/
-    MA_DC_iid_vs_MC_DC/fold0/cosine_distance.csv
-    MA_DC_iid_vs_MC_DC/fold1/cosine_distance.csv
+    MF_DL_Uni_lf00_vs_lf30/fold0/cosine_distance.csv
+    MF_DL_Uni_lf00_vs_lf30/fold1/cosine_distance.csv
     ...
-    MA_DC_noniid_vs_MC_DC/fold0/cosine_distance.csv
-    ...
-    MA_DL_iid_vs_MA_DC_iid/fold0/cosine_distance.csv
-    ...
-    MA_DL_noniid_vs_MA_DC_noniid/fold0/cosine_distance.csv
-    ...
+    MF_DL_NonUni_lf00_vs_lf100/fold4/cosine_distance.csv
 
-Mapeamento conceitual (para o artigo):
-  MC_DC     -> MC_DT
-  MA_DC     -> MF_DT
-  iid       -> Uni
-  noniid    -> NonUni
-  DL        -> DL
-  fold i    -> fold i+1
+Saída (out_dir):
+  ecdf_cosine_MF_DL_Uni_lf00_vs_lf30.pdf (+ png)
+  ecdf_cosine_MF_DL_Uni_lf00_vs_lf60.pdf (+ png)
+  ecdf_cosine_MF_DL_Uni_lf00_vs_lf100.pdf (+ png)
+  ecdf_cosine_MF_DL_NonUni_lf00_vs_lf30.pdf (+ png)
+  ecdf_cosine_MF_DL_NonUni_lf00_vs_lf60.pdf (+ png)
+  ecdf_cosine_MF_DL_NonUni_lf00_vs_lf100.pdf (+ png)
 """
 
 from __future__ import annotations
@@ -172,6 +172,7 @@ def plot_ecdf_scenario(
     fig_h_in: float,
     show_legend: bool = True,
     line_w: float = 1.6,
+    axis_labels: bool = True,
 ) -> None:
     fig = plt.figure(figsize=(fig_w_in, fig_h_in))
     ax = fig.add_subplot(111)
@@ -195,8 +196,8 @@ def plot_ecdf_scenario(
         )
 
     # SEM labels de eixo
-    ax.set_xlabel("")
-    ax.set_ylabel("")
+    ax.set_xlabel("Distância do cosseno" if axis_labels else "")
+    ax.set_ylabel("Proporção acumulada" if axis_labels else "")
 
     # limites típicos da distância cosseno (1 - cos): [0, 2]
     ax.set_xlim(0.0, 2.0)
@@ -241,6 +242,10 @@ def main():
 
     ap.add_argument("--no-legend", action="store_true", help="Remove legenda")
     ap.add_argument("--line-w", type=float, default=1.6, help="Espessura das curvas (default: 1.6)")
+    ap.add_argument("--no-axis-labels", action="store_true", help="Remove os rótulos dos eixos")
+    ap.add_argument("--contexts", default="Uni,NonUni", help="Contextos MF_DL a plotar")
+    ap.add_argument("--baseline", default="00", help="Sufixo do cenário sem ataque")
+    ap.add_argument("--attacks", default="30,60,100", help="Sufixos dos cenários com ataque")
     args = ap.parse_args()
 
     compare_root = Path(args.compare_root)
@@ -259,13 +264,14 @@ def main():
     # cores consistentes por fold para todos os cenários (alto contraste)
     colors = fold_colors(k)
 
-    # 4 cenários (nome da pasta -> tag de saída)
-    scenarios: List[Tuple[str, str]] = [
-        ("MA_DC_iid_vs_MC_DC", "MF_DT_Uni_vs_MC_DT"),
-        ("MA_DC_noniid_vs_MC_DC", "MF_DT_NonUni_vs_MC_DT"),
-        ("MA_DL_iid_vs_MA_DC_iid", "MF_DL_Uni_vs_MF_DT_Uni"),
-        ("MA_DL_noniid_vs_MA_DC_noniid", "MF_DL_NonUni_vs_MF_DT_NonUni"),
-    ]
+    # 1 gráfico por (contexto, ataque): nome da pasta -> tag de saída (iguais)
+    contexts = [c.strip() for c in args.contexts.split(",") if c.strip()]
+    attacks = [a.strip() for a in args.attacks.split(",") if a.strip()]
+    scenarios: List[Tuple[str, str]] = []
+    for ctx in contexts:
+        for atk in attacks:
+            name = f"MF_DL_{ctx}_lf{args.baseline}_vs_lf{atk}"
+            scenarios.append((name, name))
 
     for folder_name, out_tag in scenarios:
         scen_dir = compare_root / folder_name
@@ -295,6 +301,7 @@ def main():
             fig_h_in=float(args.fig_h),
             show_legend=not bool(args.no_legend),
             line_w=float(args.line_w),
+            axis_labels=not bool(args.no_axis_labels),
         )
 
         print(f"[OK] {out_pdf.name} (+ PNG)")

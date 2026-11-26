@@ -115,6 +115,7 @@ def plot_top_barh_with_ci(
     ci_level: Optional[str] = None,
     fig_w: float = 3.35,
     fig_h: float = 2.60,
+    axis_labels: bool = True,
 ) -> None:
     d = df.sort_values("mean", ascending=False).head(top_n)
     d = d.sort_values("mean", ascending=True)
@@ -127,10 +128,10 @@ def plot_top_barh_with_ci(
         lo = d[f"ci{ci_level}_low"].to_numpy(dtype=float)
         hi = d[f"ci{ci_level}_high"].to_numpy(dtype=float)
 
-        # ✅ clamp inferior do IC em zero
+        # clamp inferior do IC em zero
         lo = np.maximum(0.0, lo)
 
-        # ✅ garantir sem erros negativos
+        # garantir sem erros negativos
         left = np.maximum(0.0, mean_vals - lo)
         right = np.maximum(0.0, hi - mean_vals)
 
@@ -147,15 +148,14 @@ def plot_top_barh_with_ci(
         error_kw={"elinewidth": 0.8, "capthick": 0.8},
     )
 
-    # ❌ Sem título
+    # Sem título
     ax.set_title("")
 
-    # ❌ Sem label no eixo x
-    ax.set_xlabel("")
+    ax.set_xlabel("Média de |valor SHAP|" if axis_labels else "")
 
     ax.grid(axis="x", linestyle=":", linewidth=0.6, alpha=0.6)
 
-    # ✅ garante que eixo horizontal nunca comece em negativo
+    # garante que eixo horizontal nunca comece em negativo
     ax.set_xlim(left=0.0)
 
     fig.tight_layout()
@@ -168,7 +168,8 @@ def plot_top_barh_with_ci(
 # Main
 # ============================================================
 
-def maybe_plot(in_csv: Path, out_dir: Path, name: str, top_n: int, fig_w: float, fig_h: float):
+def maybe_plot(in_csv: Path, out_dir: Path, name: str, top_n: int, fig_w: float, fig_h: float,
+               axis_labels: bool = True):
     if not in_csv.exists():
         print(f"[SKIP] {name}")
         return
@@ -185,6 +186,7 @@ def maybe_plot(in_csv: Path, out_dir: Path, name: str, top_n: int, fig_w: float,
         ci_level=ci_lvl,
         fig_w=fig_w,
         fig_h=fig_h,
+        axis_labels=axis_labels,
     )
     print(f"[OK] {out_pdf.name}")
 
@@ -197,6 +199,7 @@ def main():
     ap.add_argument("--font-size", type=int, default=8)
     ap.add_argument("--fig-w", type=float, default=3.35)
     ap.add_argument("--fig-h", type=float, default=2.60)
+    ap.add_argument("--no-axis-labels", action="store_true", help="Remove o rótulo do eixo x")
     args = ap.parse_args()
 
     set_sbc_style(font_size=args.font_size)
@@ -214,7 +217,8 @@ def main():
     ]
 
     for name, csv in cases:
-        maybe_plot(csv, out_dir, name, args.top_n, args.fig_w, args.fig_h)
+        maybe_plot(csv, out_dir, name, args.top_n, args.fig_w, args.fig_h,
+                   axis_labels=not bool(args.no_axis_labels))
 
     print("\n[DONE] Figuras geradas em:", out_dir.resolve())
 

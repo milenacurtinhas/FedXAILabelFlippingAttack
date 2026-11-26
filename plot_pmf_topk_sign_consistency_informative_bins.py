@@ -16,13 +16,18 @@ Agrega sobre folds: média + IC 0.95 (t-interval; amostras = folds)
 
 IMPORTANTE: usa o MESMO mapeamento de cores por cenário do script de Jaccard.
 
-Entrada:
-  compare_root/<CENARIO>/fold<i>/topk_sign_consistency_<k>.csv
+Entrada (gerada por run_compare_attack_scenarios.py):
+  compare_root/MF_DL_<Uni|NonUni>_lf00_vs_lf<30|60|100>/fold<i>/topk_sign_consistency_<k>.csv
 
-Saídas:
-  out_dir/pmf_sign_informative_top5.pdf (+ png)
-  out_dir/pmf_sign_informative_top10.pdf (+ png)
-  out_dir/pmf_sign_informative_top15.pdf (+ png)
+Comparações (uma barra por comparação, em cada bin):
+  0% vs 30%, 0% vs 60%, 0% vs 100% de ataque por label flipping,
+  em figuras separadas para MF_DL (Uni) e MF_DL (NonUni).
+
+Saídas (uma figura por contexto e por k):
+  out_dir/pmf_sign_informative_MF_DL_Uni_top5.pdf (+ png)
+  out_dir/pmf_sign_informative_MF_DL_Uni_top10.pdf (+ png)
+  out_dir/pmf_sign_informative_MF_DL_Uni_top15.pdf (+ png)
+  out_dir/pmf_sign_informative_MF_DL_NonUni_top5.pdf (+ png)  ... idem para top10/top15
 
 NaN:
 - por padrão, ignora NaN (overlap vazio)
@@ -71,35 +76,30 @@ def set_sbc_style(font_size: int = 8) -> None:
 
 
 # ============================================================
-# CORES FIXAS (cenários) — IGUAL EM TODOS OS SCRIPTS
+# CORES FIXAS (cenários de ataque) — IGUAL NOS DOIS SCRIPTS DE PMF
 # ============================================================
+# Cada barra compara o cenário SEM ataque (0%) com um cenário COM ataque.
+# A cor segue a intensidade do ataque (rampa azul clara -> escura, uma só matiz),
+# o que também funciona em impressão em tons de cinza.
 
-SCENARIO_LABELS = {
-    "MA_DC_iid_vs_MC_DC": "MF_DT (Uni) vs MC_DT",
-    "MA_DC_noniid_vs_MC_DC": "MF_DT (NonUni) vs MC_DT",
-    "MA_DL_iid_vs_MA_DC_iid": "MF_DL (Uni) vs MF_DT (Uni)",
-    "MA_DL_noniid_vs_MA_DC_noniid": "MF_DL (NonUni) vs MF_DT (NonUni)",
+ATTACK_LABELS = {
+    "30": "0% vs 30%",
+    "60": "0% vs 60%",
+    "100": "0% vs 100%",
 }
 
-_CMAP = plt.get_cmap("tab10")
-SCENARIO_COLORS = {
-    "MA_DC_iid_vs_MC_DC": _CMAP(0),
-    "MA_DC_noniid_vs_MC_DC": _CMAP(1),
-    "MA_DL_iid_vs_MA_DC_iid": _CMAP(2),
-    "MA_DL_noniid_vs_MA_DC_noniid": _CMAP(3),
+ATTACK_COLORS = {
+    "30": "#6da7ec",
+    "60": "#256abf",
+    "100": "#0d366b",
 }
 
-SCENARIOS_ORDER = [
-    "MA_DC_iid_vs_MC_DC",
-    "MA_DC_noniid_vs_MC_DC",
-    "MA_DL_iid_vs_MA_DC_iid",
-    "MA_DL_noniid_vs_MA_DC_noniid",
-]
+ATTACKS_ORDER = ["30", "60", "100"]
 
-def scenario_color(key: str):
-    if key not in SCENARIO_COLORS:
-        raise KeyError(f"Cenário sem cor definida: {key}")
-    return SCENARIO_COLORS[key]
+def attack_color(key: str):
+    if key not in ATTACK_COLORS:
+        raise KeyError(f"Cenário de ataque sem cor definida: {key}")
+    return ATTACK_COLORS[key]
 
 
 # ============================================================
@@ -195,10 +195,12 @@ def plot_pmf_grouped(
     fig_w_in: float,
     fig_h_in: float,
     show_legend: bool,
+    xlabel: str = "",
+    ylabel: str = "",
 ) -> None:
     bins = np.arange(len(x_labels), dtype=np.float64)
 
-    keys_in_plot = [k for k in SCENARIOS_ORDER if k in scenario_to_stats]
+    keys_in_plot = [k for k in ATTACKS_ORDER if k in scenario_to_stats]
     n_scen = len(keys_in_plot)
 
     group_width = 0.86
@@ -224,15 +226,15 @@ def plot_pmf_grouped(
             yerr=yerr,
             capsize=2,
             error_kw={"elinewidth": 0.8, "capthick": 0.8},
-            color=scenario_color(skey),
+            color=attack_color(skey),
             linewidth=0.0,
-            label=SCENARIO_LABELS[skey],
+            label=ATTACK_LABELS[skey],
         )
 
     ax.set_xticks(bins)
     ax.set_xticklabels(x_labels)
-    ax.set_xlabel("")
-    ax.set_ylabel("")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
     ax.set_ylim(0.0, 1.0)
     ax.grid(axis="y", linestyle=":", linewidth=0.6, alpha=0.6)
 
@@ -264,6 +266,10 @@ def main():
     ap.add_argument("--fig-h", type=float, default=2.45)
 
     ap.add_argument("--no-legend", action="store_true")
+    ap.add_argument("--no-axis-labels", action="store_true", help="Remove os rótulos dos eixos")
+    ap.add_argument("--contexts", default="Uni,NonUni", help="Contextos MF_DL a plotar")
+    ap.add_argument("--baseline", default="00", help="Sufixo do cenário sem ataque")
+    ap.add_argument("--attacks", default="30,60,100", help="Sufixos dos cenários com ataque")
     ap.add_argument("--nan-as-zero", action="store_true",
                     help="Trata NaN (overlap vazio) como 0.0 antes de converter para s.")
     args = ap.parse_args()
@@ -285,7 +291,13 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for topk in [5, 10, 15]:
+    contexts = [c.strip() for c in args.contexts.split(",") if c.strip()]
+    attacks = [a.strip() for a in args.attacks.split(",") if a.strip()]
+    for a in attacks:
+        if a not in ATTACK_COLORS:
+            raise RuntimeError(f"--attacks: '{a}' sem cor definida (use {', '.join(ATTACKS_ORDER)})")
+
+    for ctx, topk in [(c, t) for c in contexts for t in (5, 10, 15)]:
         col = f"topk_sign_consistency_{topk}"
         s_min = int(math.ceil(thr * topk))
 
@@ -294,8 +306,8 @@ def main():
 
         scenario_to_stats: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
-        for skey in SCENARIOS_ORDER:
-            scen_dir = compare_root / skey
+        for skey in attacks:
+            scen_dir = compare_root / f"MF_DL_{ctx}_lf{args.baseline}_vs_lf{skey}"
             if not scen_dir.exists():
                 print(f"[SKIP] Cenário não encontrado: {scen_dir}")
                 continue
@@ -318,7 +330,7 @@ def main():
                 pmfs.append(pmf)
 
             if not pmfs:
-                print(f"[SKIP] Sem folds válidos para {skey} em topk={topk}")
+                print(f"[SKIP] Sem folds válidos para {ctx} 0% vs {skey}% em topk={topk}")
                 continue
 
             M = np.stack(pmfs, axis=0)  # (n_folds, nbins)
@@ -334,11 +346,11 @@ def main():
             scenario_to_stats[skey] = (mean_p, lo, hi)
 
         if not scenario_to_stats:
-            print(f"[SKIP] Nenhum cenário válido para topk={topk}")
+            print(f"[SKIP] Nenhum cenário válido para {ctx} topk={topk}")
             continue
 
-        out_pdf = out_dir / f"pmf_sign_informative_top{topk}.pdf"
-        out_png = out_dir / f"pmf_sign_informative_top{topk}.png"
+        out_pdf = out_dir / f"pmf_sign_informative_MF_DL_{ctx}_top{topk}.pdf"
+        out_png = out_dir / f"pmf_sign_informative_MF_DL_{ctx}_top{topk}.png"
 
         plot_pmf_grouped(
             x_labels=x_labels,
@@ -348,6 +360,8 @@ def main():
             fig_w_in=float(args.fig_w),
             fig_h_in=float(args.fig_h),
             show_legend=not bool(args.no_legend),
+            xlabel="" if args.no_axis_labels else f"Sinais consistentes no top-{topk}",
+            ylabel="" if args.no_axis_labels else "Probabilidade",
         )
 
         print(f"[OK] {out_pdf.name} (+ PNG) | topk={topk} s_min={s_min}")

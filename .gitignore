@@ -36,6 +36,7 @@ venv/
 /shap_lf*/
 /comparisons/
 /comparisons_lf*/
+/comparisons_attack/
 /global_means/
 /global_means_lf*/
 
